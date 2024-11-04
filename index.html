@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="css/style.css">
+  <title>GVT - EA3 - Kim Feller</title>
+</head>
+
+<body>
+<h1>EA3 - Farbig gefüllte 2D-Geometrie</h1>
+<h2>Graphical Visualisation Technologies</h2>
+<p>Kim Lara Feller, Technische Hochschule Lübeck, Matrikelnummer 331177</p>
+<p><b>Hinweise und Referenzen</b>
+Für diese Aufgabe habe ich meine Lösung aus der zweiten Einsendeaufgabe überarbeitet.
+Die Hauptäste der Schneeflocke und das Vieleck in der Mitte sind nun als Dreiecke realisiert und farblich gestaltet.
+Die Länge der Hauptäste habe ich gekürzt, so dass optisch mit etwas Vorstellungskraft eine blaue Blume erkennbar wird.</p>
+
+<canvas id="canvas" width="800" height="800"></canvas>
+<script>
+  const canvas = document.getElementById('canvas');
+  const gl = canvas.getContext('webgl');
+
+  if (!gl) {
+    console.error('WebGL wird von diesem Browser nicht unterstützt');
+  }
+
+  const vertices = [];
+  const colors = [];
+
+  const branches = 8; // Anzahl Hauptäste
+  const mainLength = 0.2; // Länge Hauptäste, für EA3 kürzer
+  // Parameter für Dekorationen aus EA2 entfallen, da nun Dreiecke verwendet werden
+  const polygonSides = 6;
+  const polygonRadius = 0.1;
+
+  // Dreieck mit einer bestimmten Farbe hinzuzufügen
+  function addTriangle(x1, y1, x2, y2, x3, y3, color1, color2, color3) {
+    vertices.push(x1, y1, x2, y2, x3, y3);
+    colors.push(...color1, ...color2, ...color3);
+  }
+
+  // Hauptäste hinzufügen mit Farben
+  function addBranch(angle) {
+    const x1 = 0, y1 = 0;
+    const x2 = Math.cos(angle) * mainLength;
+    const y2 = Math.sin(angle) * mainLength;
+    const x3 = Math.cos(angle + Math.PI / branches) * mainLength;
+    const y3 = Math.sin(angle + Math.PI / branches) * mainLength;
+
+    const color1 = [0.95, 0.95, 1.0];
+    const color2 = [0.35, 0.55, 0.85];
+    const color3 = [0.0, 0.25, 0.6];
+
+    addTriangle(x1, y1, x2, y2, x3, y3, color1, color2, color3);
+  }
+
+  // Hauptäste als Dreiecke erzeugen
+  for (let i = 0; i < branches; i++) {
+    const angle = (i / branches) * Math.PI * 2;
+    addBranch(angle);
+  }
+
+  // Vieleck in der Mitte mit Farben für jedes Teil-Dreieck
+  function addPolygon() {
+    const colorPalette = [
+      [0.95, 0.95, 1.0],  // Helles Eisblau
+      [0.75, 0.85, 1.0],  // Helles Blau
+      [0.55, 0.7, 0.9],   // Mittelblau
+      [0.35, 0.55, 0.8],  // Kälteres Blau
+      [0.2, 0.4, 0.7],    // Dunkelblau
+      [0.0, 0.25, 0.6]    // Dunkeleres Blau
+    ];
+
+    for (let i = 0; i < polygonSides; i++) {
+      const angle1 = (i / polygonSides) * Math.PI * 2;
+      const angle2 = ((i + 1) % polygonSides) / polygonSides * Math.PI * 2;
+
+      const colorCenter = colorPalette[i % colorPalette.length];
+      const colorEdge1 = colorPalette[(i + 1) % colorPalette.length];
+      const colorEdge2 = colorPalette[(i + 2) % colorPalette.length];
+
+      addTriangle(
+        0, 0,
+        Math.cos(angle1) * polygonRadius, Math.sin(angle1) * polygonRadius,
+        Math.cos(angle2) * polygonRadius, Math.sin(angle2) * polygonRadius,
+        colorCenter, colorEdge1, colorEdge2
+      );
+    }
+  }
+
+  addPolygon();
+
+  const vertexBuffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+
+  const colorBuffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.STATIC_DRAW);
+
+  const vertexShaderSource = `
+            attribute vec2 coordinates;
+            attribute vec3 color;
+            varying vec3 vColor;
+            void main(void) {
+                gl_Position = vec4(coordinates, 0.0, 1.0);
+                vColor = color;
+            }
+        `;
+
+  const fragmentShaderSource = `
+            precision mediump float;
+            varying vec3 vColor;
+            void main(void) {
+                gl_FragColor = vec4(vColor, 1.0);
+            }
+        `;
+
+  function createShader(gl, source, type) {
+    const shader = gl.createShader(type);
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
+    return shader;
+  }
+
+  const vertexShader = createShader(gl, vertexShaderSource, gl.VERTEX_SHADER);
+  const fragmentShader = createShader(gl, fragmentShaderSource, gl.FRAGMENT_SHADER);
+
+  const shaderProgram = gl.createProgram();
+  gl.attachShader(shaderProgram, vertexShader);
+  gl.attachShader(shaderProgram, fragmentShader);
+  gl.linkProgram(shaderProgram);
+  gl.useProgram(shaderProgram);
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+  const coordinates = gl.getAttribLocation(shaderProgram, 'coordinates');
+  gl.vertexAttribPointer(coordinates, 2, gl.FLOAT, false, 0, 0);
+  gl.enableVertexAttribArray(coordinates);
+
+  gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+  const color = gl.getAttribLocation(shaderProgram, 'color');
+  gl.vertexAttribPointer(color, 3, gl.FLOAT, false, 0, 0);
+  gl.enableVertexAttribArray(color);
+
+  gl.clearColor(1.0, 1.0, 1.0, 1.0);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  // Mit Dreiecken statt Linien
+  gl.drawArrays(gl.TRIANGLES, 0, vertices.length / 2);
+</script>
+</body>
+</html>
